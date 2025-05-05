@@ -47,6 +47,13 @@ export default function ExpenseTrackerScreen({ route }) {
   const [amount, setAmount] = useState("");
   const [expenses, setExpenses] = useState({});
   const [totalExpense, setTotalExpense] = useState(0);
+  // format currency
+  const formatCurrency = (value) =>
+    new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
+      maximumFractionDigits: 0,
+    }).format(value);
 
   // listener
   useEffect(() => {
@@ -246,7 +253,8 @@ export default function ExpenseTrackerScreen({ route }) {
                 .map(([cat, amount]) => (
                   <View key={cat} style={styles(theme).expenseItem}>
                     <Text style={styles(theme).expenseText}>
-                      {cat.charAt(0).toUpperCase() + cat.slice(1)}: ${amount}
+                      {cat.charAt(0).toUpperCase() + cat.slice(1)}:{" "}
+                      {formatCurrency(amount)}
                     </Text>
                     <TouchableOpacity onPress={() => handleDeleteExpense(cat)}>
                       <MaterialIcons
@@ -266,8 +274,12 @@ export default function ExpenseTrackerScreen({ route }) {
                 <Text style={styles(theme).budgetText}>Budget:</Text>
               </View>
               <View style={styles(theme).budgetRow}>
-                <Text style={styles(theme).budgetValue}>${totalExpense}</Text>
-                <Text style={styles(theme).budgetValue}>${safeBudget}</Text>
+                <Text style={styles(theme).budgetValue}>
+                  {formatCurrency(totalExpense)}
+                </Text>
+                <Text style={styles(theme).budgetValue}>
+                  {formatCurrency(safeBudget)}
+                </Text>
               </View>
               <Text style={styles(theme).budgetOverview}>
                 {`Expenses: ${percentage}% of Budget`}
