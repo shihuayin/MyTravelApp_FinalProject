@@ -107,7 +107,7 @@ export default function TripListScreen({ navigation }) {
     if (photoCache[tripId]) {
       return { uri: photoCache[tripId] };
     }
-    return require("../assets/london.jpg");
+    return require("../assets/default.png");
   };
 
   //delete trip
