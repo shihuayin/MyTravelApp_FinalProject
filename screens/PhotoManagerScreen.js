@@ -21,7 +21,13 @@ import {
   Animated,
   ScrollView,
 } from "react-native";
-import { PinchGestureHandler, State } from "react-native-gesture-handler";
+import {
+  PinchGestureHandler,
+  State,
+  PanGestureHandler,
+} from "react-native-gesture-handler";
+import * as FileSystem from "expo-file-system";
+import * as Sharing from "expo-sharing";
 import { auth, db, storage } from "../firebase";
 import {
   collection,
@@ -47,16 +53,14 @@ import { MaterialIcons } from "@expo/vector-icons";
 import { ThemeContext } from "../ThemeContext";
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
+const SWIPE_THRESHOLD = 150;
 
-//pinch-to-zoom on image
 function PinchableImage({ uri, imageStyle }) {
   const scale = useRef(new Animated.Value(1)).current;
   const lastScale = useRef(1);
-
-  const onPinchEvent = Animated.event([{ nativeEvent: { scale: scale } }], {
+  const onPinchEvent = Animated.event([{ nativeEvent: { scale } }], {
     useNativeDriver: false,
   });
-
   const onPinchStateChange = (event) => {
     if (
       event.nativeEvent.state === State.END ||
@@ -68,7 +72,6 @@ function PinchableImage({ uri, imageStyle }) {
       scale.setValue(lastScale.current);
     }
   };
-
   return (
     <PinchGestureHandler
       onGestureEvent={onPinchEvent}
@@ -90,7 +93,7 @@ export default function PhotoManagerScreen({ route }) {
   const [comment, setComment] = useState("");
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedPhoto, setSelectedPhoto] = useState(null);
-  const [uploadingPhotoUris, setUploadingPhotoUris] = useState([]);
+  const [modalTranslateY] = useState(new Animated.Value(0));
 
   useEffect(() => {
     const colRef = collection(
@@ -102,56 +105,36 @@ export default function PhotoManagerScreen({ route }) {
       "photos"
     );
     const q = query(colRef, orderBy("timestamp", "asc"));
-    const unsubscribe = onSnapshot(
-      q,
-      (snapshot) => {
-        const allData = [];
-        snapshot.forEach((d) => allData.push({ id: d.id, ...d.data() }));
-        setPhotos(allData);
-
-        if (selectedPhoto) {
-          const updatedPhoto = allData.find((p) => p.id === selectedPhoto.id);
-          if (!updatedPhoto) {
-            setModalVisible(false);
-            setSelectedPhoto(null);
-          }
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const all = [];
+      snapshot.forEach((d) => all.push({ id: d.id, ...d.data() }));
+      setPhotos(all);
+      if (selectedPhoto) {
+        if (!all.find((p) => p.id === selectedPhoto.id)) {
+          setModalVisible(false);
+          setSelectedPhoto(null);
         }
-      },
-      (error) => {
-        console.log("Firestore photos snapshot error:", error);
       }
-    );
-    return () => {
-      if (unsubscribe) unsubscribe();
-    };
+    });
+    return unsubscribe;
   }, [tripId, selectedPhoto]);
 
   const groupPhotosByDate = (photos) => {
-    const groups = {};
-    photos.forEach((photo) => {
-      const dateStr = new Date(photo.timestamp).toISOString().split("T")[0];
-      if (!groups[dateStr]) {
-        groups[dateStr] = [];
-      }
-      groups[dateStr].push(photo);
+    const g = {};
+    photos.forEach((p) => {
+      const d = new Date(p.timestamp).toISOString().split("T")[0];
+      if (!g[d]) g[d] = [];
+      g[d].push(p);
     });
-
-    // 3 photos per row
-    const sections = [];
-    Object.keys(groups).forEach((dateStr) => {
-      const items = groups[dateStr].sort((a, b) => b.timestamp - a.timestamp);
-      const rows = [];
-      for (let i = 0; i < items.length; i += 3) {
-        rows.push(items.slice(i, i + 3));
-      }
-      sections.push({
-        title: dateStr,
-        data: rows,
-      });
-    });
-    // sort  newest date first
-    sections.sort((a, b) => new Date(b.title) - new Date(a.title));
-    return sections;
+    return Object.keys(g)
+      .map((date) => {
+        const items = g[date].sort((a, b) => b.timestamp - a.timestamp);
+        const rows = [];
+        for (let i = 0; i < items.length; i += 3)
+          rows.push(items.slice(i, i + 3));
+        return { title: date, data: rows };
+      })
+      .sort((a, b) => new Date(b.title) - new Date(a.title));
   };
 
   const requestPermission = async () => {
@@ -167,41 +150,34 @@ export default function PhotoManagerScreen({ route }) {
   };
 
   const pickImage = async () => {
-    const hasPermission = await requestPermission();
-    if (!hasPermission) return;
-    let result = await ImagePicker.launchImageLibraryAsync({
+    if (!(await requestPermission())) return;
+    const res = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
       quality: 1,
     });
-    if (!result.canceled && result.assets && result.assets.length > 0) {
-      const originalUri = result.assets[0].uri;
-
-      // resize and compress image
-      const manipResult = await ImageManipulator.manipulateAsync(
-        originalUri,
+    if (!res.canceled && res.assets.length > 0) {
+      const uri = res.assets[0].uri;
+      const m = await ImageManipulator.manipulateAsync(
+        uri,
         [{ resize: { width: 800 } }],
         { compress: 0.6, format: ImageManipulator.SaveFormat.JPEG }
       );
-      uploadPhoto(manipResult.uri);
+      uploadPhoto(m.uri);
     }
   };
 
   const uploadPhoto = async (uri) => {
-    setUploadingPhotoUris((prev) => [...prev, uri]);
     try {
-      const response = await fetch(uri);
-      const blob = await response.blob();
-      const filename = `${await Crypto.digestStringAsync(
+      const blob = await (await fetch(uri)).blob();
+      const fn = `${await Crypto.digestStringAsync(
         Crypto.CryptoDigestAlgorithm.SHA256,
-        uri + Date.now().toString()
+        uri + Date.now()
       )}.jpg`;
-      const storagePath = `users/${auth.currentUser.uid}/trips/${tripId}/${filename}`;
-      const storageRef = ref(storage, storagePath);
-      await uploadBytes(storageRef, blob, { contentType: "image/jpeg" });
-      const url = await getDownloadURL(storageRef);
-
-      // save metadata to firestore
+      const path = `users/${auth.currentUser.uid}/trips/${tripId}/${fn}`;
+      const sref = ref(storage, path);
+      await uploadBytes(sref, blob, { contentType: "image/jpeg" });
+      const url = await getDownloadURL(sref);
       await addDoc(
         collection(
           db,
@@ -213,23 +189,20 @@ export default function PhotoManagerScreen({ route }) {
         ),
         {
           imageUrl: url,
-          imagePath: storagePath,
+          imagePath: path,
           comments: {},
           timestamp: Date.now(),
         }
       );
     } catch (e) {
-      console.log("Upload error:", e);
+      console.log(e);
       Alert.alert("Upload failed", e.message);
-    } finally {
-      setUploadingPhotoUris((prev) => prev.filter((u) => u !== uri));
     }
   };
 
-  //add comment
   const addCommentToPhoto = async () => {
     if (!comment.trim() || !selectedPhoto) return;
-    const photoRef = doc(
+    const refP = doc(
       db,
       "users",
       auth.currentUser.uid,
@@ -238,31 +211,19 @@ export default function PhotoManagerScreen({ route }) {
       "photos",
       selectedPhoto.id
     );
-    try {
-      const photoDoc = await getDoc(photoRef);
-      if (photoDoc.exists()) {
-        const photoData = photoDoc.data();
-        const newComments = { ...photoData.comments };
-        const commentId = Date.now().toString();
-        newComments[commentId] = comment.trim();
-        await updateDoc(photoRef, { comments: newComments });
-        setSelectedPhoto({
-          ...photoData,
-          comments: newComments,
-          id: selectedPhoto.id,
-        });
-        setComment("");
-      }
-    } catch (e) {
-      console.log("Add comment error:", e);
-      Alert.alert("Error", "Failed to add comment.");
+    const snap = await getDoc(refP);
+    if (snap.exists()) {
+      const data = snap.data();
+      const c = { ...data.comments, [Date.now().toString()]: comment.trim() };
+      await updateDoc(refP, { comments: c });
+      setSelectedPhoto({ ...data, comments: c, id: selectedPhoto.id });
+      setComment("");
     }
   };
 
-  //delete comment
-  const deleteComment = async (commentId) => {
+  const deleteComment = async (cid) => {
     if (!selectedPhoto) return;
-    const photoRef = doc(
+    const refP = doc(
       db,
       "users",
       auth.currentUser.uid,
@@ -271,27 +232,16 @@ export default function PhotoManagerScreen({ route }) {
       "photos",
       selectedPhoto.id
     );
-    try {
-      const photoDoc = await getDoc(photoRef);
-      if (photoDoc.exists()) {
-        const photoData = photoDoc.data();
-        const newComments = { ...photoData.comments };
-        delete newComments[commentId];
-        await updateDoc(photoRef, { comments: newComments });
-        setSelectedPhoto({
-          ...photoData,
-          comments: newComments,
-          id: selectedPhoto.id,
-        });
-      }
-    } catch (e) {
-      console.log("Delete comment error:", e);
-      Alert.alert("Error", "Failed to delete comment.");
+    const snap = await getDoc(refP);
+    if (snap.exists()) {
+      const d = snap.data();
+      delete d.comments[cid];
+      await updateDoc(refP, { comments: d.comments });
+      setSelectedPhoto({ ...d, id: selectedPhoto.id });
     }
   };
 
-  //delete image
-  const deletePhotoItem = async (photo) => {
+  const deletePhotoItem = (photo) => {
     Alert.alert(
       "Confirm Delete",
       "Are you sure you want to delete this photo?",
@@ -302,21 +252,21 @@ export default function PhotoManagerScreen({ route }) {
           style: "destructive",
           onPress: async () => {
             try {
-              const storageRef = ref(storage, photo.imagePath);
-              await deleteObject(storageRef);
-              const photoRef = doc(
-                db,
-                "users",
-                auth.currentUser.uid,
-                "trips",
-                tripId,
-                "photos",
-                photo.id
+              await deleteObject(ref(storage, photo.imagePath));
+              await deleteDoc(
+                doc(
+                  db,
+                  "users",
+                  auth.currentUser.uid,
+                  "trips",
+                  tripId,
+                  "photos",
+                  photo.id
+                )
               );
-              await deleteDoc(photoRef);
-            } catch (error) {
-              console.log("Delete error:", error);
-              Alert.alert("Error", "Failed to delete photo.");
+            } catch (e) {
+              console.log(e);
+              Alert.alert("Error", "Failed to delete photo");
             }
           },
         },
@@ -324,25 +274,53 @@ export default function PhotoManagerScreen({ route }) {
     );
   };
 
-  const renderRow = ({ item: row }) => {
-    return (
-      <View style={styles.rowContainer}>
-        {row.map((photo) => (
-          <TouchableOpacity
-            key={photo.id}
-            style={styles.photoContainer}
-            onPress={() => {
-              setSelectedPhoto(photo);
-              setModalVisible(true);
-            }}
-            onLongPress={() => deletePhotoItem(photo)}
-          >
-            <Image source={{ uri: photo.imageUrl }} style={styles.photoImage} />
-          </TouchableOpacity>
-        ))}
-      </View>
-    );
+  const shareImage = async (remoteUrl) => {
+    try {
+      const filename = remoteUrl.split("/").pop().split("?")[0];
+      const localUri = FileSystem.cacheDirectory + filename;
+      await FileSystem.downloadAsync(remoteUrl, localUri);
+      await Sharing.shareAsync(localUri, { mimeType: "image/jpeg" });
+    } catch (e) {
+      console.log(e);
+      Alert.alert("Share Failed", "Unable to share image");
+    }
   };
+
+  const onPanGestureEvent = Animated.event(
+    [{ nativeEvent: { translationY: modalTranslateY } }],
+    { useNativeDriver: true }
+  );
+  const onPanStateChange = (event) => {
+    if (event.nativeEvent.state === State.END) {
+      if (event.nativeEvent.translationY > SWIPE_THRESHOLD) {
+        setModalVisible(false);
+        modalTranslateY.setValue(0);
+      } else {
+        Animated.spring(modalTranslateY, {
+          toValue: 0,
+          useNativeDriver: true,
+        }).start();
+      }
+    }
+  };
+
+  const renderRow = ({ item: row }) => (
+    <View style={styles.rowContainer}>
+      {row.map((photo) => (
+        <TouchableOpacity
+          key={photo.id}
+          style={styles.photoContainer}
+          onPress={() => {
+            setSelectedPhoto(photo);
+            setModalVisible(true);
+          }}
+          onLongPress={() => deletePhotoItem(photo)}
+        >
+          <Image source={{ uri: photo.imageUrl }} style={styles.photoImage} />
+        </TouchableOpacity>
+      ))}
+    </View>
+  );
 
   const sections = groupPhotosByDate(photos);
   const styles = createStyles(theme);
@@ -353,7 +331,7 @@ export default function PhotoManagerScreen({ route }) {
         style={styles.container}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
-        <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
           <View style={styles.innerContainer}>
             <Text style={styles.title}>Photo Manager</Text>
             {photos.length === 0 ? (
@@ -363,8 +341,8 @@ export default function PhotoManagerScreen({ route }) {
             ) : (
               <SectionList
                 sections={sections}
-                keyExtractor={(row, index) =>
-                  row.map((photo) => photo.id).join("_") + index.toString()
+                keyExtractor={(row, idx) =>
+                  row.map((p) => p.id).join("_") + idx
                 }
                 renderSectionHeader={({ section: { title } }) => (
                   <Text style={styles.sectionHeader}>{title}</Text>
@@ -373,7 +351,6 @@ export default function PhotoManagerScreen({ route }) {
                 contentContainerStyle={styles.flatListContent}
               />
             )}
-
             <View style={styles.bottomBar}>
               <TouchableOpacity
                 style={styles.addPhotoButton}
@@ -387,75 +364,93 @@ export default function PhotoManagerScreen({ route }) {
                 <Text style={styles.addPhotoText}>Add Photo</Text>
               </TouchableOpacity>
             </View>
-
-            <Modal
-              visible={modalVisible}
-              animationType="slide"
-              transparent={true}
-              onRequestClose={() => setModalVisible(false)}
-            >
-              <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-                <View style={styles.modalOverlay}>
-                  <View style={styles.modalCard}>
-                    <View style={styles.modalHeader}>
-                      <Text style={styles.modalTitle}>Photo Details</Text>
-                      <TouchableOpacity
-                        style={styles.closeButton}
-                        onPress={() => setModalVisible(false)}
-                      >
-                        <MaterialIcons
-                          name="close"
-                          size={24}
-                          color={theme.text}
-                        />
-                      </TouchableOpacity>
+            <Modal visible={modalVisible} transparent animationType="none">
+              <PanGestureHandler
+                onGestureEvent={onPanGestureEvent}
+                onHandlerStateChange={onPanStateChange}
+              >
+                <Animated.View
+                  style={[
+                    styles.modalOverlay,
+                    { transform: [{ translateY: modalTranslateY }] },
+                  ]}
+                >
+                  <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+                    <View style={styles.modalCard}>
+                      <View style={styles.modalHeader}>
+                        <TouchableOpacity
+                          onPress={() => setModalVisible(false)}
+                          style={styles.closeButton}
+                        >
+                          <MaterialIcons
+                            name="close"
+                            size={24}
+                            color={theme.text}
+                          />
+                        </TouchableOpacity>
+                        <Text style={styles.modalTitle}>Photo Details</Text>
+                        <TouchableOpacity
+                          onPress={() =>
+                            selectedPhoto && shareImage(selectedPhoto.imageUrl)
+                          }
+                          style={styles.shareButton}
+                        >
+                          <MaterialIcons
+                            name="share"
+                            size={24}
+                            color={theme.text}
+                          />
+                        </TouchableOpacity>
+                      </View>
+                      {selectedPhoto && (
+                        <>
+                          <View style={styles.zoomContainer}>
+                            <PinchableImage
+                              uri={selectedPhoto.imageUrl}
+                              imageStyle={styles.modalImage}
+                            />
+                          </View>
+                          <ScrollView
+                            style={styles.commentsList}
+                            showsVerticalScrollIndicator={false}
+                          >
+                            {Object.entries(selectedPhoto.comments).map(
+                              ([cid, txt]) => (
+                                <View key={cid} style={styles.commentItem}>
+                                  <Text style={styles.commentText}>{txt}</Text>
+                                  <TouchableOpacity
+                                    onPress={() => deleteComment(cid)}
+                                  >
+                                    <MaterialIcons
+                                      name="delete"
+                                      size={20}
+                                      color={theme.text}
+                                    />
+                                  </TouchableOpacity>
+                                </View>
+                              )
+                            )}
+                          </ScrollView>
+                          <View style={styles.commentInputContainer}>
+                            <TextInput
+                              placeholder="Add a comment..."
+                              placeholderTextColor={theme.placeholder}
+                              value={comment}
+                              onChangeText={setComment}
+                              style={styles.commentInput}
+                            />
+                            <Button
+                              title="Add"
+                              color={theme.buttonBackground}
+                              onPress={addCommentToPhoto}
+                            />
+                          </View>
+                        </>
+                      )}
                     </View>
-                    {selectedPhoto && (
-                      <>
-                        <View style={styles.zoomContainer}>
-                          <PinchableImage
-                            uri={selectedPhoto.imageUrl}
-                            imageStyle={styles.modalImage}
-                          />
-                        </View>
-                        <Text style={styles.modalSubtitle}>Comments</Text>
-                        <ScrollView style={styles.commentsList}>
-                          {Object.entries(selectedPhoto.comments || {}).map(
-                            ([cid, text]) => (
-                              <View key={cid} style={styles.commentItem}>
-                                <Text style={styles.commentText}>{text}</Text>
-                                <TouchableOpacity
-                                  onPress={() => deleteComment(cid)}
-                                >
-                                  <MaterialIcons
-                                    name="delete"
-                                    size={20}
-                                    color={theme.text}
-                                  />
-                                </TouchableOpacity>
-                              </View>
-                            )
-                          )}
-                        </ScrollView>
-                        <View style={styles.commentInputContainer}>
-                          <TextInput
-                            placeholder="Add a comment"
-                            placeholderTextColor={theme.placeholder}
-                            value={comment}
-                            onChangeText={setComment}
-                            style={styles.commentInput}
-                          />
-                          <Button
-                            title="Add"
-                            onPress={addCommentToPhoto}
-                            color={theme.buttonBackground}
-                          />
-                        </View>
-                      </>
-                    )}
-                  </View>
-                </View>
-              </TouchableWithoutFeedback>
+                  </TouchableWithoutFeedback>
+                </Animated.View>
+              </PanGestureHandler>
             </Modal>
           </View>
         </TouchableWithoutFeedback>
@@ -468,47 +463,29 @@ const createStyles = (theme) => {
   const containerPadding = 16 * 2;
   const spacing = 4;
   const photoWidth = (SCREEN_WIDTH - containerPadding - spacing * 2) / 3;
-
   return StyleSheet.create({
-    safeArea: {
-      flex: 1,
-      backgroundColor: theme.background,
-    },
-    container: {
-      flex: 1,
-    },
-    innerContainer: {
-      flex: 1,
-      paddingHorizontal: 16,
-      paddingTop: 10,
-    },
+    safeArea: { flex: 1, backgroundColor: theme.background },
+    container: { flex: 1 },
+    innerContainer: { flex: 1, paddingHorizontal: 16, paddingTop: 10 },
     title: {
       fontSize: 32,
       fontWeight: "800",
       color: theme.primary,
       textAlign: "center",
       marginBottom: 30,
-      fontFamily: "System",
-      textShadowColor: theme.primaryShadow,
-      textShadowOffset: { width: 0, height: 3 },
-      textShadowRadius: 6,
-      letterSpacing: 1,
       textTransform: "uppercase",
       paddingVertical: 8,
       paddingHorizontal: 16,
       backgroundColor: theme.accentLight,
       borderRadius: 10,
       alignSelf: "center",
+      letterSpacing: 1,
+      textShadowColor: theme.primaryShadow,
+      textShadowOffset: { width: 0, height: 3 },
+      textShadowRadius: 6,
     },
-    emptyHint: {
-      textAlign: "center",
-      color: theme.placeholder,
-      marginTop: 20,
-      fontSize: 16,
-    },
-    flatListContent: {
-      paddingBottom: 20,
-    },
+    emptyHint: { textAlign: "center", color: theme.placeholder, marginTop: 20 },
+    flatListContent: { paddingBottom: 20 },
     sectionHeader: {
       fontSize: 18,
       fontWeight: "600",
@@ -524,32 +501,17 @@ const createStyles = (theme) => {
       justifyContent: "space-between",
       marginBottom: 8,
     },
-    photoContainer: {
-      width: photoWidth,
-      marginHorizontal: 2,
-    },
+    photoContainer: { width: photoWidth, marginHorizontal: 2 },
     photoImage: {
       width: "100%",
       height: photoWidth,
       borderRadius: 10,
       resizeMode: "cover",
     },
-    uploadingOverlay: {
-      position: "absolute",
-      top: 0,
-      right: 0,
-      bottom: 0,
-      left: 0,
-      backgroundColor: "rgba(0,0,0,0.4)",
-      justifyContent: "center",
-      alignItems: "center",
-    },
     bottomBar: {
       flexDirection: "row",
       justifyContent: "center",
-      alignItems: "center",
       paddingVertical: 12,
-      marginBottom: 8,
     },
     addPhotoButton: {
       flexDirection: "row",
@@ -567,22 +529,20 @@ const createStyles = (theme) => {
     addPhotoText: {
       color: theme.buttonText,
       fontSize: 16,
-      fontWeight: "600",
       marginLeft: 6,
+      fontWeight: "600",
     },
     modalOverlay: {
       flex: 1,
-      backgroundColor: "rgba(0,0,0,0.5)",
       justifyContent: "center",
       alignItems: "center",
-      padding: 20,
+      backgroundColor: "rgba(0,0,0,0.5)",
     },
     modalCard: {
       width: SCREEN_WIDTH * 0.9,
       backgroundColor: theme.cardBackground,
       borderRadius: 14,
       padding: 20,
-      position: "relative",
       elevation: 5,
       maxHeight: "85%",
       borderWidth: 1,
@@ -590,42 +550,23 @@ const createStyles = (theme) => {
     },
     modalHeader: {
       flexDirection: "row",
-      justifyContent: "space-between",
       alignItems: "center",
+      justifyContent: "space-between",
       marginBottom: 10,
     },
-    modalTitle: {
-      fontSize: 20,
-      color: theme.text,
-      fontWeight: "bold",
-    },
-    closeButton: {
-      padding: 4,
-    },
+    closeButton: { padding: 8 },
+    modalTitle: { fontSize: 18, fontWeight: "600", color: theme.text },
+    shareButton: { padding: 8 },
     zoomContainer: {
       width: "100%",
       height: 220,
-      marginBottom: 12,
       overflow: "hidden",
       alignItems: "center",
       justifyContent: "center",
-    },
-    modalImage: {
-      width: "100%",
-      height: "100%",
-      resizeMode: "contain",
-    },
-    modalSubtitle: {
-      fontSize: 18,
-      color: theme.text,
-      fontWeight: "600",
-      marginBottom: 8,
-      textAlign: "center",
-    },
-    commentsList: {
-      maxHeight: 150,
       marginBottom: 12,
     },
+    modalImage: { width: "100%", height: "100%", resizeMode: "contain" },
+    commentsList: { maxHeight: 150, marginBottom: 12 },
     commentItem: {
       flexDirection: "row",
       justifyContent: "space-between",
@@ -634,25 +575,15 @@ const createStyles = (theme) => {
       borderBottomWidth: 1,
       borderColor: theme.borderColor,
     },
-    commentText: {
-      flex: 1,
-      marginRight: 10,
-      color: theme.text,
-    },
+    commentText: { flex: 1, color: theme.text, marginRight: 10 },
     commentInputContainer: {
       flexDirection: "row",
       alignItems: "center",
       borderWidth: 1,
       borderColor: theme.borderColor,
       borderRadius: 8,
-      paddingHorizontal: 10,
-      paddingVertical: 4,
+      padding: 4,
     },
-    commentInput: {
-      flex: 1,
-      padding: 8,
-      fontSize: 14,
-      color: theme.text,
-    },
+    commentInput: { flex: 1, padding: 8, fontSize: 14, color: theme.text },
   });
 };
