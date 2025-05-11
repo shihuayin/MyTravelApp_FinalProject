@@ -26,116 +26,104 @@ export default function TripDetailScreen({ route, navigation }) {
   const [expenseSummary, setExpenseSummary] = useState("Loading...");
   const [expensePercentage, setExpensePercentage] = useState(0);
   const [photos, setPhotos] = useState([]);
-  //load trip data
+
   useEffect(() => {
-    const unsubscribes = [];
-    // fetch trip info
-    const fetchTrip = async () => {
+    let unsubPack, unsubExp, unsubPhoto;
+
+    (async () => {
       try {
         const docRef = doc(db, "users", auth.currentUser.uid, "trips", tripId);
         const docSnap = await getDoc(docRef);
         if (docSnap.exists()) {
-          setTrip({ id: docSnap.id, ...docSnap.data() });
-        } else {
-          console.log("No such trip!");
+          const data = { id: docSnap.id, ...docSnap.data() };
+          setTrip(data);
+
+          // 订阅 PackingList
+          const packingCol = collection(
+            db,
+            "users",
+            auth.currentUser.uid,
+            "trips",
+            tripId,
+            "packingList"
+          );
+          unsubPack = onSnapshot(
+            packingCol,
+            (snapshot) => {
+              const items = snapshot.docs.map((d) => d.data());
+              const unchecked = items.filter((i) => !i.checked).length;
+              let summary;
+              if (unchecked === 0 && items.length > 0) {
+                summary = "All packed up! You’re ready to go 🚀";
+              } else if (unchecked === 1) {
+                summary = "1 item not checked";
+              } else {
+                summary = `${unchecked} items not checked`;
+              }
+              setPackingSummary(summary);
+            },
+            console.log
+          );
+
+          const expCol = collection(
+            db,
+            "users",
+            auth.currentUser.uid,
+            "trips",
+            tripId,
+            "expenses"
+          );
+          unsubExp = onSnapshot(
+            expCol,
+            (snapshot) => {
+              let total = 0;
+              snapshot.forEach((d) => {
+                const n = Number(d.data().amount);
+                total += isNaN(n) ? 0 : n;
+              });
+              const budget = data.budget || 0;
+              let summary;
+              let pct = 0;
+              if (budget > 0) {
+                pct = Math.round((total / budget) * 100);
+                summary = `${pct}% of budget`;
+              } else {
+                summary = "No budget set";
+              }
+              setExpensePercentage(pct);
+              setExpenseSummary(summary);
+            },
+            console.log
+          );
+
+          const photoCol = collection(
+            db,
+            "users",
+            auth.currentUser.uid,
+            "trips",
+            tripId,
+            "photos"
+          );
+          unsubPhoto = onSnapshot(
+            photoCol,
+            (snapshot) => {
+              const urls = snapshot.docs.map((d) => d.data().imageUrl);
+              setPhotos(urls.slice(-4));
+            },
+            console.log
+          );
         }
-      } catch (error) {
-        console.log("Error fetching trip: ", error);
+      } catch (e) {
+        console.log("Error fetching trip:", e);
       }
-    };
-    // listen for packing list update
-    const fetchPackingSummary = () => {
-      const colRef = collection(
-        db,
-        "users",
-        auth.currentUser.uid,
-        "trips",
-        tripId,
-        "packingList"
-      );
-      const unsubscribe = onSnapshot(
-        colRef,
-        (snapshot) => {
-          const items = snapshot.docs.map((doc) => doc.data());
-          const uncheckedCount = items.filter((item) => !item.checked).length;
-          let summary = "";
-          if (uncheckedCount === 0 && items.length > 0) {
-            summary = " All packed up! You’re ready to go 🚀";
-          } else if (uncheckedCount === 1) {
-            summary = "1 item not checked";
-          } else {
-            summary = `${uncheckedCount} items not checked`;
-          }
-          setPackingSummary(summary);
-        },
-        (error) => console.log("PackingList onSnapshot error:", error)
-      );
-      unsubscribes.push(unsubscribe);
-    };
+    })();
 
-    // listen for expense updates
-    const fetchExpenseSummary = () => {
-      const colRef = collection(
-        db,
-        "users",
-        auth.currentUser.uid,
-        "trips",
-        tripId,
-        "expenses"
-      );
-      const unsubscribe = onSnapshot(
-        colRef,
-        (snapshot) => {
-          let totalExpense = 0;
-          snapshot.forEach((doc) => {
-            const amount = Number(doc.data().amount);
-            totalExpense += isNaN(amount) ? 0 : amount;
-          });
-          const budget = trip?.budget || 0;
-          let summary = "";
-          let percentage = 0;
-          if (budget > 0) {
-            percentage = Math.round((totalExpense / budget) * 100);
-            summary = `${percentage}% of budget`;
-          } else {
-            summary = "No budget set";
-          }
-          setExpensePercentage(percentage);
-          setExpenseSummary(summary);
-        },
-        (error) => console.log("Expenses onSnapshot error:", error)
-      );
-      unsubscribes.push(unsubscribe);
-    };
-
-    // fetch most recent 4  photos
-    const fetchPhotos = () => {
-      const colRef = collection(
-        db,
-        "users",
-        auth.currentUser.uid,
-        "trips",
-        tripId,
-        "photos"
-      );
-      const unsubscribe = onSnapshot(
-        colRef,
-        (snapshot) => {
-          const photoUrls = snapshot.docs.map((doc) => doc.data().imageUrl);
-          setPhotos(photoUrls.slice(-4));
-        },
-        (error) => console.log("Photos onSnapshot error:", error)
-      );
-      unsubscribes.push(unsubscribe);
-    };
-    fetchTrip();
-    fetchPackingSummary();
-    fetchExpenseSummary();
-    fetchPhotos();
     return () => {
-      unsubscribes.forEach((unsub) => unsub && unsub());
+      unsubPack && unsubPack();
+      unsubExp && unsubExp();
+      unsubPhoto && unsubPhoto();
     };
-  }, [tripId, trip?.budget]);
+  }, [tripId]);
 
   const styles = createStyles(theme);
 
@@ -227,7 +215,6 @@ export default function TripDetailScreen({ route, navigation }) {
     </SafeAreaView>
   );
 }
-
 const createStyles = (theme) =>
   StyleSheet.create({
     safeArea: {

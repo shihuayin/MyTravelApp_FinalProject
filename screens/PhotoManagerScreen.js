@@ -1,5 +1,4 @@
 // PhotoManagerScreen.js
-
 import React, { useEffect, useState, useRef, useContext } from "react";
 import {
   SafeAreaView,
@@ -168,6 +167,7 @@ export default function PhotoManagerScreen({ route }) {
   };
 
   const uploadPhoto = async (uri) => {
+    if (typeof fetch !== "function") return;
     try {
       const blob = await (await fetch(uri)).blob();
       const fn = `${await Crypto.digestStringAsync(
@@ -316,7 +316,11 @@ export default function PhotoManagerScreen({ route }) {
           }}
           onLongPress={() => deletePhotoItem(photo)}
         >
-          <Image source={{ uri: photo.imageUrl }} style={styles.photoImage} />
+          <Image
+            testID="photo-item"
+            source={{ uri: photo.imageUrl }}
+            style={styles.photoImage}
+          />
         </TouchableOpacity>
       ))}
     </View>
@@ -414,7 +418,7 @@ export default function PhotoManagerScreen({ route }) {
                             style={styles.commentsList}
                             showsVerticalScrollIndicator={false}
                           >
-                            {Object.entries(selectedPhoto.comments).map(
+                            {Object.entries(selectedPhoto.comments || {}).map(
                               ([cid, txt]) => (
                                 <View key={cid} style={styles.commentItem}>
                                   <Text style={styles.commentText}>{txt}</Text>

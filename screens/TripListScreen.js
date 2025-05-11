@@ -210,6 +210,7 @@ export default function TripListScreen({ navigation }) {
       />
       <TouchableOpacity
         style={styles.floatingButton}
+        accessibilityLabel="add"
         onPress={() => navigation.navigate("CreateTripScreen")}
       >
         <MaterialIcons name="add" size={28} color={theme.buttonText} />
