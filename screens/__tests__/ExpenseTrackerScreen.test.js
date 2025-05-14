@@ -1,3 +1,7 @@
+import { render, fireEvent, waitFor } from "@testing-library/react-native";
+import { Alert } from "react-native";
+import { ThemeContext } from "../../ThemeContext";
+
 const mockDocRef = {};
 const mockGetDoc = jest.fn(() =>
   Promise.resolve({ exists: () => false, data: () => ({ amount: 0 }) })
@@ -44,12 +48,6 @@ beforeAll(() => {
   // Now import the component under test
   ExpenseTrackerScreen = require("../ExpenseTrackerScreen").default;
 });
-
-// ─── Imports for testing tools ───
-import React from "react";
-import { render, fireEvent, waitFor } from "@testing-library/react-native";
-import { Alert } from "react-native";
-import { ThemeContext } from "../../ThemeContext";
 
 // ─── Tests ───
 describe("ExpenseTrackerScreen", () => {

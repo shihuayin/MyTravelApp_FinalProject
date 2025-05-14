@@ -1,3 +1,7 @@
+import { render, fireEvent, waitFor } from "@testing-library/react-native";
+import { Alert } from "react-native";
+import { ThemeContext } from "../../ThemeContext";
+import PackingListScreen from "../PackingListScreen";
 beforeAll(() => {
   global.setImmediate ||= (cb) => cb();
 });
@@ -53,12 +57,6 @@ jest.mock("@react-native-async-storage/async-storage", () =>
   require("@react-native-async-storage/async-storage/jest/async-storage-mock")
 );
 jest.mock("firebase/auth");
-
-import React from "react";
-import { render, fireEvent, waitFor } from "@testing-library/react-native";
-import { Alert, TouchableOpacity, TextInput } from "react-native";
-import { ThemeContext } from "../../ThemeContext";
-import PackingListScreen from "../PackingListScreen";
 
 describe("PackingListScreen", () => {
   const mockTheme = {

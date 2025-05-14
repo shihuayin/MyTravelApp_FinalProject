@@ -16,6 +16,7 @@ import {
 import { auth, db } from "../firebase";
 import { addDoc, collection } from "firebase/firestore";
 import { ThemeContext } from "../ThemeContext";
+import { Alert } from "react-native";
 
 // create a new trip entry
 export default function CreateTripScreen({ navigation }) {
@@ -25,7 +26,10 @@ export default function CreateTripScreen({ navigation }) {
 
   // store to Firestore
   const handleCreate = async () => {
-    if (!destination.trim() || !budget.trim()) return;
+    if (!destination.trim() || !budget.trim()) {
+      Alert.alert("Input Error", "Please fill in both destination and budget.");
+      return;
+    }
 
     // add trip to the Firestore "trips"
     await addDoc(collection(db, "users", auth.currentUser.uid, "trips"), {

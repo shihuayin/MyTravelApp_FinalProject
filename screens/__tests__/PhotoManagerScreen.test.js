@@ -1,3 +1,9 @@
+import { render, fireEvent, waitFor } from "@testing-library/react-native";
+import PhotoManagerScreen from "../PhotoManagerScreen";
+import { ThemeContext } from "../../ThemeContext";
+import * as ImagePicker from "expo-image-picker";
+import * as ImageManipulator from "expo-image-manipulator";
+import { onSnapshot } from "firebase/firestore";
 // **在任何 import 之前** mock 所有依赖
 jest.mock("@expo/vector-icons", () => {
   const React = require("react");
@@ -51,23 +57,10 @@ jest.mock("expo-file-system", () => ({
 }));
 jest.mock("expo-sharing", () => ({ shareAsync: jest.fn() }));
 
-// 之后再导入 React 及被测组件
-import React from "react";
-import { render, fireEvent, waitFor } from "@testing-library/react-native";
-import PhotoManagerScreen from "../PhotoManagerScreen";
-import { ThemeContext } from "../../ThemeContext";
-import * as ImagePicker from "expo-image-picker";
-import * as ImageManipulator from "expo-image-manipulator";
-import { onSnapshot } from "firebase/firestore";
-
 const theme = {
   background: "#fff",
   text: "#000",
   cardBackground: "#eee",
-  borderColor: "#ccc",
-  buttonBackground: "#000",
-  buttonText: "#fff",
-  placeholder: "#888",
 };
 
 beforeEach(() => {

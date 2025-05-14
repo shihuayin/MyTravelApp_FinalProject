@@ -1,3 +1,8 @@
+import { render, fireEvent, waitFor } from "@testing-library/react-native";
+import { Alert } from "react-native";
+import CreateTripScreen from "../CreateTripScreen";
+import { ThemeContext } from "../../ThemeContext";
+
 const mockCollection = jest.fn();
 const mockAddDoc = jest.fn(() => Promise.resolve({ id: "newTripId" }));
 
@@ -29,16 +34,20 @@ jest.mock("@react-navigation/native", () => ({
   useNavigation: () => ({ goBack: jest.fn() }),
 }));
 
-import React from "react";
-import { render, fireEvent, waitFor } from "@testing-library/react-native";
-import CreateTripScreen from "../CreateTripScreen";
-import { ThemeContext } from "../../ThemeContext";
-
-describe("Create Trip", () => {
-  const mockTheme = {
+describe("CreateTripScreen", () => {
+  const defaultTheme = {
     placeholder: "#888",
     buttonBackground: "#000",
     buttonText: "#fff",
+  };
+
+  const renderScreen = (goBackMock = jest.fn()) => {
+    const utils = render(
+      <ThemeContext.Provider value={{ theme: defaultTheme }}>
+        <CreateTripScreen navigation={{ goBack: goBackMock }} />
+      </ThemeContext.Provider>
+    );
+    return { ...utils, goBackMock };
   };
 
   beforeEach(() => {
@@ -46,28 +55,26 @@ describe("Create Trip", () => {
     mockAddDoc.mockClear();
   });
 
-  it("does nothing when destination or budget is empty", () => {
-    const goBack = jest.fn();
-    const { getByText } = render(
-      <ThemeContext.Provider value={{ theme: mockTheme }}>
-        <CreateTripScreen navigation={{ goBack }} />
-      </ThemeContext.Provider>
-    );
+  it("alerts when destination or budget is empty and does not write or navigate", () => {
+    const alertSpy = jest.spyOn(Alert, "alert").mockImplementation(() => {});
+    const { getByText, goBackMock } = renderScreen();
 
+    // Attempt to create with empty inputs
     fireEvent.press(getByText("Create"));
 
+    expect(alertSpy).toHaveBeenCalledWith(
+      "Input Error",
+      "Please fill in both destination and budget."
+    );
     expect(mockCollection).not.toHaveBeenCalled();
     expect(mockAddDoc).not.toHaveBeenCalled();
-    expect(goBack).not.toHaveBeenCalled();
+    expect(goBackMock).not.toHaveBeenCalled();
+
+    alertSpy.mockRestore();
   });
 
   it("calls addDoc and goes back on valid input", async () => {
-    const goBack = jest.fn();
-    const { getByPlaceholderText, getByText } = render(
-      <ThemeContext.Provider value={{ theme: mockTheme }}>
-        <CreateTripScreen navigation={{ goBack }} />
-      </ThemeContext.Provider>
-    );
+    const { getByPlaceholderText, getByText, goBackMock } = renderScreen();
 
     fireEvent.changeText(getByPlaceholderText("Destination"), "Tokyo");
     fireEvent.changeText(getByPlaceholderText("Budget"), "2500");
@@ -87,7 +94,7 @@ describe("Create Trip", () => {
           budget: 2500,
         })
       );
-      expect(goBack).toHaveBeenCalled();
+      expect(goBackMock).toHaveBeenCalled();
     });
   });
 });

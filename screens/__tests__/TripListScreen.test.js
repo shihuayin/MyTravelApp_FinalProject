@@ -1,9 +1,4 @@
 // screens/__tests__/TripListScreen.test.js
-import React from "react";
-// 让 InteractionManager 立即执行回调，避免 setImmediate 未定义的问题
-jest.mock("react-native/Libraries/Interaction/InteractionManager", () => ({
-  runAfterInteractions: (cb) => cb(),
-}));
 
 import {
   render,
@@ -15,107 +10,128 @@ import { Alert } from "react-native";
 import TripListScreen from "../TripListScreen";
 import { ThemeContext } from "../../ThemeContext";
 
-// mock navigation prop
-const mockNavigate = jest.fn();
-const mockNavigation = { navigate: mockNavigate };
-
-// mock firebase/auth
-jest.mock("firebase/auth", () => ({
-  signOut: jest.fn(),
+// Make InteractionManager run callbacks immediately to avoid setImmediate issues
+jest.mock("react-native/Libraries/Interaction/InteractionManager", () => ({
+  runAfterInteractions: (cb) => cb(),
 }));
 
-// mock ../firebase
+// Navigation mock
+const navigate = jest.fn();
+const navigation = { navigate };
+
+// Firebase auth mock
+jest.mock("firebase/auth", () => ({ signOut: jest.fn() }));
+
+// Firebase app mock (auth & db placeholders)
 jest.mock("../../firebase", () => ({
   auth: { currentUser: { uid: "user1" } },
   db: {},
 }));
 
-// mock @expo/vector-icons
+// Replace @expo/vector-icons with a harmless <View>
 jest.mock("@expo/vector-icons", () => {
   const React = require("react");
   const { View } = require("react-native");
   return { MaterialIcons: (props) => <View {...props} /> };
 });
 
-// mock firestore
+// ---------------------------------------------------------------------------
+// Firestore mock — prefix variable with "mock" so we can reference it inside factory
 const mockOnSnapshot = jest.fn();
+
 jest.mock("firebase/firestore", () => ({
-  collection: () => ({}),
-  query: () => ({}),
-  orderBy: () => ({}),
-  onSnapshot: (q, cb) => mockOnSnapshot(q, cb),
-  doc: () => ({}),
-  deleteDoc: () => Promise.resolve(),
+  collection: jest.fn(),
+  query: jest.fn(),
+  orderBy: jest.fn(),
+  onSnapshot: (...args) => mockOnSnapshot(...args),
+  doc: jest.fn(),
+  deleteDoc: jest.fn(() => Promise.resolve()),
 }));
 
-describe("TripListScreen", () => {
-  const theme = {
-    background: "#fff",
-    text: "#000",
-    buttonText: "#000",
-    cardBackground: "#eee",
-    borderColor: "#ccc",
-  };
+// Provide a sensible default so *any* unexpected onSnapshot still works
+mockOnSnapshot.mockImplementation((_, cb) => {
+  cb({
+    docs: [],
+    forEach: () => {},
+  });
+  return () => {};
+});
 
+// ---------------------------------------------------------------------------
+// Theme used by provider
+const theme = {
+  background: "#fff",
+  text: "#000",
+  buttonText: "#000",
+  cardBackground: "#eee",
+  borderColor: "#ccc",
+};
+
+/**
+ * Helper: render the screen wrapped in ThemeContext.
+ */
+function renderScreen() {
+  return render(
+    <ThemeContext.Provider value={{ theme }}>
+      <TripListScreen navigation={navigation} />
+    </ThemeContext.Provider>
+  );
+}
+
+/**
+ * Helper: queue Firestore mocks — first for trips, then one for each photos sub‑collection.
+ * @param {Array<{id:string,destination:string,createdAt:number}>} trips
+ */
+function mockTrips(trips = []) {
+  // Reset previous behaviour and counts
+  mockOnSnapshot.mockReset();
+
+  // Flag so we send the trips data only once (first time onSnapshot is invoked)
+  let tripsSent = false;
+
+  mockOnSnapshot.mockImplementation((_, cb) => {
+    if (!tripsSent) {
+      tripsSent = true;
+      cb({
+        forEach(fn) {
+          trips.forEach(({ id, destination, createdAt }) =>
+            fn({ id, data: () => ({ destination, createdAt }) })
+          );
+        },
+      });
+    } else {
+      // photos (or any other) snapshot – return empty list with required fields
+      cb({
+        docs: [],
+        forEach: () => {},
+      });
+    }
+    return () => {};
+  });
+}
+
+// ---------------------------------------------------------------------------
+
+describe("TripListScreen", () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
+  // ① 当没有行程时应显示空状态文本
   it("shows empty state when there are no trips", () => {
-    // 第一轮 onSnapshot trips：空列表
-    mockOnSnapshot.mockImplementationOnce((_, cb) => {
-      cb({ forEach() {} });
-      return () => {};
-    });
+    mockTrips();
+    renderScreen();
 
-    render(
-      <ThemeContext.Provider value={{ theme }}>
-        <TripListScreen navigation={mockNavigation} />
-      </ThemeContext.Provider>
-    );
-
-    expect(screen.getByText("No trips found.")).toBeTruthy();
+    expect(screen.getByText(/no trips found/i)).toBeTruthy();
   });
 
+  // ② 渲染行程网格并在点击目的地卡片时导航到详情页
   it("renders a grid of trips and navigates on press", async () => {
-    const tripsData = [
+    mockTrips([
       { id: "t1", destination: "Paris", createdAt: 1 },
       { id: "t2", destination: "Tokyo", createdAt: 2 },
-    ];
-
-    // 1) trips snapshot
-    mockOnSnapshot
-      .mockImplementationOnce((_, cb) => {
-        cb({
-          forEach(fn) {
-            tripsData.forEach((d) =>
-              fn({
-                id: d.id,
-                data: () => ({
-                  destination: d.destination,
-                  createdAt: d.createdAt,
-                }),
-              })
-            );
-          },
-        });
-        return () => {};
-      })
-      // 2)&3) photos snapshot（stub 为空）
-      .mockImplementationOnce((_, cb) => {
-        cb({ docs: [] });
-        return () => {};
-      })
-      .mockImplementationOnce((_, cb) => {
-        cb({ docs: [] });
-        return () => {};
-      });
-
-    render(
-      <ThemeContext.Provider value={{ theme }}>
-        <TripListScreen navigation={mockNavigation} />
-      </ThemeContext.Provider>
-    );
+    ]);
+    renderScreen();
 
     await waitFor(() => {
       expect(screen.getByText("Paris")).toBeTruthy();
@@ -123,61 +139,24 @@ describe("TripListScreen", () => {
     });
 
     fireEvent.press(screen.getByText("Paris"));
-    expect(mockNavigate).toHaveBeenCalledWith("TripDetailScreen", {
-      tripId: "t1",
-    });
+    expect(navigate).toHaveBeenCalledWith("TripDetailScreen", { tripId: "t1" });
   });
 
+  // ③ 点击浮动“add”按钮应导航到创建行程页面
   it("navigates to CreateTripScreen when floating button is pressed", () => {
-    // stub trips empty
-    mockOnSnapshot.mockImplementationOnce((_, cb) => {
-      cb({ forEach() {} });
-      return () => {};
-    });
-
-    render(
-      <ThemeContext.Provider value={{ theme }}>
-        <TripListScreen navigation={mockNavigation} />
-      </ThemeContext.Provider>
-    );
+    mockTrips();
+    renderScreen();
 
     fireEvent.press(screen.getByLabelText("add"));
-    expect(mockNavigate).toHaveBeenCalledWith("CreateTripScreen");
+    expect(navigate).toHaveBeenCalledWith("CreateTripScreen");
   });
 
+  // ④ 长按行程卡片应弹出删除确认对话框
   it("asks for confirmation when long-pressing a trip", async () => {
-    const tripsData = [{ id: "t1", destination: "Berlin", createdAt: 3 }];
-
-    mockOnSnapshot
-      .mockImplementationOnce((_, cb) => {
-        cb({
-          forEach(fn) {
-            tripsData.forEach((d) =>
-              fn({
-                id: d.id,
-                data: () => ({
-                  destination: d.destination,
-                  createdAt: d.createdAt,
-                }),
-              })
-            );
-          },
-        });
-        return () => {};
-      })
-      // photos stub
-      .mockImplementationOnce((_, cb) => {
-        cb({ docs: [] });
-        return () => {};
-      });
-
+    mockTrips([{ id: "t1", destination: "Berlin", createdAt: 3 }]);
     const alertSpy = jest.spyOn(Alert, "alert");
 
-    render(
-      <ThemeContext.Provider value={{ theme }}>
-        <TripListScreen navigation={mockNavigation} />
-      </ThemeContext.Provider>
-    );
+    renderScreen();
 
     await waitFor(() => expect(screen.getByText("Berlin")).toBeTruthy());
 

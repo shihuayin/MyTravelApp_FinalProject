@@ -1,4 +1,3 @@
-import React from "react";
 import { render, fireEvent, waitFor } from "@testing-library/react-native";
 import { Alert } from "react-native";
 import RegisterScreen from "../RegisterScreen";
@@ -21,15 +20,14 @@ jest.mock("@expo/vector-icons", () => {
   const { View } = require("react-native");
   return { MaterialIcons: (props) => <View {...props} /> };
 });
+
 /* ---------- theme ---------- */
 const theme = {
   background: "#fff",
   text: "#000",
   buttonText: "#000",
-  cardBackground: "#eee",
-  borderColor: "#ccc",
-  buttonBackground: "#888",
 };
+
 /* ---------- helper ---------- */
 const renderScreen = () =>
   render(
@@ -37,20 +35,41 @@ const renderScreen = () =>
       <RegisterScreen navigation={mockNavigation} />
     </ThemeContext.Provider>
   );
+
 /* ---------- tests ---------- */
 describe("RegisterScreen", () => {
   beforeEach(() => jest.clearAllMocks());
 
-  it("shows alert if fields are empty", () => {
-    const alertSpy = jest.spyOn(Alert, "alert");
-    const { getAllByText } = renderScreen();
+  describe("empty field validation", () => {
+    const placeholders = ["Email", "Password", "Confirm Password"];
 
-    fireEvent.press(getAllByText("Register")[1]); // 点击按钮而非标题
-    expect(alertSpy).toHaveBeenCalledWith(
-      "Input Error",
-      "Please fill in all fields."
-    );
-    expect(mockCreateUser).not.toHaveBeenCalled();
+    placeholders.forEach((ph) => {
+      it(`alerts when ${ph} is empty`, () => {
+        const alertSpy = jest
+          .spyOn(Alert, "alert")
+          .mockImplementation(() => {});
+        const { getByPlaceholderText, getAllByText } = renderScreen();
+
+        // Fill only the other fields
+        placeholders
+          .filter((p) => p !== ph)
+          .forEach((p) => {
+            fireEvent.changeText(
+              getByPlaceholderText(p),
+              p === "Email" ? "a@b.com" : "validPass"
+            );
+          });
+
+        fireEvent.press(getAllByText("Register")[1]);
+
+        expect(alertSpy).toHaveBeenCalledWith(
+          "Input Error",
+          "Please fill in all fields."
+        );
+        expect(mockCreateUser).not.toHaveBeenCalled();
+        alertSpy.mockRestore();
+      });
+    });
   });
 
   it("shows alert when passwords do not match", () => {
