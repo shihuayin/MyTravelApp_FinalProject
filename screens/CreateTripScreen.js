@@ -1,17 +1,17 @@
 // screens/CreateTripScreen.js
 
-import React, { useState, useContext } from "react";
+import { useState, useContext } from "react";
 import {
   SafeAreaView,
   View,
   Text,
   TextInput,
-  Button,
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
   TouchableWithoutFeedback,
   Keyboard,
+  TouchableOpacity,
 } from "react-native";
 import { auth, db } from "../firebase";
 import { addDoc, collection } from "firebase/firestore";
@@ -72,13 +72,10 @@ export default function CreateTripScreen({ navigation }) {
                 keyboardType="numeric"
               />
               {/* submit button */}
-              <View style={styles.buttonContainer}>
-                <Button
-                  title="Create"
-                  onPress={handleCreate}
-                  color={theme.buttonBackground}
-                />
-              </View>
+
+              <TouchableOpacity style={styles.button} onPress={handleCreate}>
+                <Text style={styles.buttonText}>Create</Text>
+              </TouchableOpacity>
             </View>
           </View>
         </TouchableWithoutFeedback>
@@ -127,8 +124,17 @@ const createStyles = (theme) =>
       borderWidth: 1,
       borderColor: theme.borderColor,
     },
-    buttonContainer: {
+
+    button: {
+      backgroundColor: theme.buttonBackground,
       borderRadius: 8,
-      overflow: "hidden",
+      paddingVertical: 12,
+      alignItems: "center",
+      marginTop: 10,
+    },
+    buttonText: {
+      color: theme.buttonText,
+      fontSize: 18,
+      fontWeight: "600",
     },
   });

@@ -1,5 +1,5 @@
 // App.js
-import React from "react";
+
 import MainStack from "./navigation/MainStack";
 import { ThemeProvider } from "./ThemeContext";
 

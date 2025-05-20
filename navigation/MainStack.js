@@ -1,5 +1,5 @@
 // navigation/MainStack.js
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "../firebase";
 import { NavigationContainer } from "@react-navigation/native";
