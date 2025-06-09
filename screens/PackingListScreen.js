@@ -34,7 +34,7 @@ export default function PackingListScreen({ route }) {
   const [quantity, setQuantity] = useState(1);
   const [items, setItems] = useState([]);
 
-  // listener for pack list collection
+  // listen pack list collection
   useEffect(() => {
     const colRef = collection(
       db,
@@ -70,15 +70,19 @@ export default function PackingListScreen({ route }) {
 
   // add new item
   const handleAdd = async () => {
+    //input validation
     if (!name.trim()) {
       Alert.alert("Input Error", "Please enter the item name.");
       return;
     }
+    //limit quantity 1～10
     if (quantity < 1 || quantity > 10) {
       Alert.alert("Input Error", "Quantity must be between 1 and 10.");
       return;
     }
+    //add logic, addDoc
     try {
+      //navigate to `users/{currentUserId}/trips/{tripId}/packingList`
       const colRef = collection(
         db,
         "users",
@@ -87,6 +91,7 @@ export default function PackingListScreen({ route }) {
         tripId,
         "packingList"
       );
+      //add
       await addDoc(colRef, {
         name: name.trim(),
         quantity: quantity,
@@ -101,7 +106,8 @@ export default function PackingListScreen({ route }) {
       Alert.alert("Error", "Failed to add item.");
     }
   };
-  //  checked/unchecked
+
+  //  checked/unchecked state
   const toggleCheck = async (item) => {
     try {
       const docRef = doc(
@@ -113,6 +119,7 @@ export default function PackingListScreen({ route }) {
         "packingList",
         item.id
       );
+      //update state
       await updateDoc(docRef, { checked: !item.checked });
       LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     } catch (error) {
@@ -120,7 +127,7 @@ export default function PackingListScreen({ route }) {
       Alert.alert("Error", "Failed to update status.");
     }
   };
-  //handle delete
+  //delete logic, deleteDoc
   const handleDelete = async (item) => {
     Alert.alert(
       "Confirm Deletion",
@@ -155,6 +162,7 @@ export default function PackingListScreen({ route }) {
       { cancelable: true }
     );
   };
+
   // summary based on unchecked items
   const getSummary = () => {
     const uncheckedCount = items.filter((item) => !item.checked).length;
@@ -166,7 +174,7 @@ export default function PackingListScreen({ route }) {
     return `You have ${uncheckedCount} items not checked.`;
   };
 
-  //quantity increment
+  //item quantity increment
   const incrementQuantity = () => {
     setQuantity((prev) => {
       if (prev < 10) {
@@ -176,7 +184,7 @@ export default function PackingListScreen({ route }) {
       return prev;
     });
   };
-  //quantity decrement
+  //item quantity decrement
   const decrementQuantity = () => {
     setQuantity((prev) => {
       if (prev > 1) {
@@ -187,6 +195,7 @@ export default function PackingListScreen({ route }) {
     });
   };
 
+  //same functionality, if user type or paste number directly
   const handleQuantityChange = (text) => {
     const num = parseInt(text, 10);
     if (!isNaN(num)) {
@@ -201,7 +210,8 @@ export default function PackingListScreen({ route }) {
       setQuantity("");
     }
   };
-  // render  packing list
+
+  // render each item of the packing list
   const renderItem = ({ item }) => (
     <View style={[styles.listItem, item.checked && styles.listItemChecked]}>
       <TouchableOpacity
@@ -228,16 +238,20 @@ export default function PackingListScreen({ route }) {
   const styles = createStyles(theme);
   return (
     <SafeAreaView style={styles.safeArea}>
+      {/* close keyboard auto */}
       <KeyboardAvoidingView
         style={styles.container}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
-        {/* close keyboard auto */}
+        {/* dismiss keyboard when tapping on blank area */}
         <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
           <View style={styles.innerContainer}>
+            {/* title */}
             <Text style={styles.title}>Packing List</Text>
+            {/* input card*/}
             <View style={styles.card}>
               <View style={styles.inputRow}>
+                {/* item name */}
                 <TextInput
                   style={styles.input}
                   placeholder="Item Name"
@@ -245,7 +259,9 @@ export default function PackingListScreen({ route }) {
                   value={name}
                   onChangeText={setName}
                 />
+                {/* quantity selector*/}
                 <View style={styles.quantityContainer}>
+                  {/* "-" icon */}
                   <TouchableOpacity
                     onPress={decrementQuantity}
                     style={styles.quantityButton}
@@ -256,6 +272,8 @@ export default function PackingListScreen({ route }) {
                       color={theme.buttonText}
                     />
                   </TouchableOpacity>
+
+                  {/* input number */}
                   <TextInput
                     style={styles.quantityInput}
                     keyboardType="numeric"
@@ -264,6 +282,8 @@ export default function PackingListScreen({ route }) {
                     onChangeText={handleQuantityChange}
                     maxLength={2}
                   />
+
+                  {/* "+" icon */}
                   <TouchableOpacity
                     onPress={incrementQuantity}
                     style={styles.quantityButton}
@@ -276,16 +296,21 @@ export default function PackingListScreen({ route }) {
                   </TouchableOpacity>
                 </View>
               </View>
+              {/* add button */}
               <TouchableOpacity style={styles.addButton} onPress={handleAdd}>
                 <Text style={styles.addButtonText}>Add</Text>
               </TouchableOpacity>
             </View>
+
+            {/* list rendering, use flat instead of map*/}
+            {/*  call renderItem function to render each row */}
             <FlatList
               data={items}
               keyExtractor={(item) => item.id}
               renderItem={renderItem}
               style={styles.flatList}
             />
+            {/* bottom summary */}
             {items.length > 0 && (
               <View style={styles.summaryCard}>
                 <Text style={styles.summaryText}>{getSummary()}</Text>

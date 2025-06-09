@@ -26,18 +26,19 @@ export default function RegisterScreen({ navigation }) {
 
   // handle regist logic with firebase Auth
   const handleRegister = () => {
-    //  all fields  filled
+    // input validation, all fields been filled
     if (!email.trim() || !password || !confirmPassword) {
       Alert.alert("Input Error", "Please fill in all fields.");
       return;
     }
-    // Validate password
+    // Validate password, check if password === confirmpassword
     if (password !== confirmPassword) {
-      Alert.alert("Password Mismatch", "Passwords do not match.");
+      Alert.alert("Password Mismatch");
       return;
     }
 
     // create user account with firebase auth
+    // createUserWithEmailAndPassword comes from firebase/auth
     createUserWithEmailAndPassword(auth, email.trim(), password)
       .then(() => {})
       .catch((error) => {
@@ -55,8 +56,10 @@ export default function RegisterScreen({ navigation }) {
       >
         <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
           <View style={styles.innerContainer}>
+            {/* title */}
             <Text style={styles.title}>Register</Text>
             <View style={styles.card}>
+              {/* input, email */}
               <TextInput
                 style={styles.input}
                 placeholder="Email"
@@ -67,6 +70,7 @@ export default function RegisterScreen({ navigation }) {
                 autoCapitalize="none"
                 autoCorrect={false}
               />
+              {/* input password */}
               <TextInput
                 style={styles.input}
                 placeholder="Password"
@@ -75,6 +79,7 @@ export default function RegisterScreen({ navigation }) {
                 value={password}
                 onChangeText={setPassword}
               />
+              {/* password again, confirm */}
               <TextInput
                 style={styles.input}
                 placeholder="Confirm Password"
@@ -83,6 +88,8 @@ export default function RegisterScreen({ navigation }) {
                 value={confirmPassword}
                 onChangeText={setConfirmPassword}
               />
+
+              {/* register button */}
               <TouchableOpacity style={styles.button} onPress={handleRegister}>
                 <MaterialIcons
                   name="person-add"
@@ -91,6 +98,7 @@ export default function RegisterScreen({ navigation }) {
                 />
                 <Text style={styles.buttonText}>Register</Text>
               </TouchableOpacity>
+              {/* back to login page */}
               <TouchableOpacity
                 style={[styles.button, styles.secondaryButton]}
                 onPress={() => navigation.goBack()}

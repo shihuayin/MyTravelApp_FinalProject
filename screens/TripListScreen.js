@@ -28,8 +28,11 @@ import { signOut } from "firebase/auth";
 import { ThemeContext } from "../ThemeContext";
 
 // calculate dimensions for grid layout
+// width of the screen
 const SCREEN_WIDTH = Dimensions.get("window").width;
+// card width
 const CARD_WIDTH = (SCREEN_WIDTH - 3 * 12) / 2;
+// card height
 const CARD_HEIGHT = Math.round((CARD_WIDTH * 9) / 8);
 
 export default function TripListScreen({ navigation }) {
@@ -39,16 +42,23 @@ export default function TripListScreen({ navigation }) {
   const photoUnsubscribesRef = useRef([]);
   const [isSettingsModalVisible, setSettingsModalVisible] = useState(false);
 
-  // fetch trips
+  // listen to all trips under the current user
+  // all trips ordered by creation time, desc
   useEffect(() => {
     if (!auth.currentUser) return;
+    //collection(...) path,  users/{uid}/trips
     const colRef = collection(db, "users", auth.currentUser.uid, "trips");
+    //build query and order it by creation time, desc
     const q = query(colRef, orderBy("createdAt", "desc"));
+
+    //listen in real-time
     const unsubscribe = onSnapshot(
       q,
       (snapshot) => {
         let arr = [];
+        //iterate over each document
         snapshot.forEach((docSnap) => {
+          //combine id and data into a single object, and add it to the array.
           arr.push({ id: docSnap.id, ...docSnap.data() });
         });
         setTrips(arr);
@@ -60,10 +70,11 @@ export default function TripListScreen({ navigation }) {
     return () => unsubscribe();
   }, []);
 
-  // load image for each trip
+  //listen photos subcollection of each trip and cache the first photo.
   useEffect(() => {
     photoUnsubscribesRef.current.forEach((unsub) => unsub && unsub());
     photoUnsubscribesRef.current = [];
+    //iterate over all current trips
     trips.forEach((trip) => {
       const colRef = collection(
         db,
@@ -73,12 +84,14 @@ export default function TripListScreen({ navigation }) {
         trip.id,
         "photos"
       );
-      const q = query(colRef, orderBy("timestamp", "asc"));
+      // use the most recent photo as the cover image, desc
+      const q = query(colRef, orderBy("timestamp", "desc"));
       const unsubscribe = onSnapshot(
         q,
         (snapshot) => {
           const photos = snapshot.docs.map((doc) => doc.data().imageUrl);
           if (photos.length > 0) {
+            // photos[0], most recent one
             setPhotoCache((prevCache) => ({
               ...prevCache,
               [trip.id]: photos[0],
@@ -102,7 +115,7 @@ export default function TripListScreen({ navigation }) {
     };
   }, [trips]);
 
-  // background image, first trip photo
+  // background image
   const getCardBackground = (tripId) => {
     if (photoCache[tripId]) {
       return { uri: photoCache[tripId] };
@@ -122,9 +135,11 @@ export default function TripListScreen({ navigation }) {
           style: "destructive",
           onPress: async () => {
             try {
+              //delete the specified trip document from Firestore
               await deleteDoc(
                 doc(db, "users", auth.currentUser.uid, "trips", tripId)
               );
+              //Remove the deleted trip at frontend, update UI
               setTrips((prevTrips) =>
                 prevTrips.filter((trip) => trip.id !== tripId)
               );
@@ -137,6 +152,7 @@ export default function TripListScreen({ navigation }) {
       ]
     );
   };
+
   // logout
   const handleLogout = () => {
     Alert.alert(
@@ -154,25 +170,29 @@ export default function TripListScreen({ navigation }) {
     );
   };
 
+  //setting panel shown/hidden
   const toggleSettingsModal = () => {
     setSettingsModalVisible(!isSettingsModalVisible);
   };
 
-  // renderr each trip as a card
-  // with background photo and title
+  // render each trip as a card(background photo + title)
   const renderTrip = ({ item }) => (
     <TouchableOpacity
       style={styles.cardContainer}
+      // tap to enter the detail page
       onPress={() =>
         navigation.navigate("TripDetailScreen", { tripId: item.id })
       }
+      //long press to show the delete confirmation
       onLongPress={() => handleDeleteTrip(item.id)}
     >
+      {/* background */}
       <ImageBackground
         source={getCardBackground(item.id)}
         style={styles.cardBackground}
         imageStyle={styles.cardImage}
       >
+        {/* destination */}
         <View style={styles.cardOverlay}>
           <Text style={styles.cardTitle}>{item.destination}</Text>
         </View>
@@ -186,9 +206,11 @@ export default function TripListScreen({ navigation }) {
       style={[styles.safeArea, { backgroundColor: theme.background }]}
     >
       <View style={styles.topBar}>
+        {/* My Trips */}
         <Text style={[styles.headerTitle, { color: theme.text }]}>
           My Trips
         </Text>
+        {/* setting button */}
         <TouchableOpacity
           style={styles.iconButton}
           onPress={toggleSettingsModal}
@@ -197,9 +219,11 @@ export default function TripListScreen({ navigation }) {
         </TouchableOpacity>
       </View>
       <FlatList
+        // pass the trips fetched from Firestore as data source for FlatList
         data={trips}
         keyExtractor={(item) => item.id}
         renderItem={renderTrip}
+        // 2 items per row
         numColumns={2}
         columnWrapperStyle={styles.columnWrapper}
         contentContainerStyle={styles.listContent}
@@ -208,6 +232,8 @@ export default function TripListScreen({ navigation }) {
           <Text style={styles.emptyText}>No trips found.</Text>
         }
       />
+
+      {/* add trip button */}
       <TouchableOpacity
         style={styles.floatingButton}
         accessibilityLabel="add"
@@ -215,6 +241,8 @@ export default function TripListScreen({ navigation }) {
       >
         <MaterialIcons name="add" size={28} color={theme.buttonText} />
       </TouchableOpacity>
+
+      {/* setting modal */}
       <Modal
         visible={isSettingsModalVisible}
         animationType="slide"
@@ -229,9 +257,12 @@ export default function TripListScreen({ navigation }) {
                 { backgroundColor: theme.cardBackground },
               ]}
             >
+              {/*  Settings text */}
               <Text style={[styles.modalTitle, { color: theme.text }]}>
                 Settings
               </Text>
+
+              {/* switch button, light/dark */}
               <View style={styles.settingItem}>
                 <Text style={[styles.settingText, { color: theme.text }]}>
                   Dark Mode
@@ -246,6 +277,8 @@ export default function TripListScreen({ navigation }) {
                   }}
                 />
               </View>
+
+              {/* logout button */}
               <TouchableOpacity
                 style={styles.settingButton}
                 onPress={handleLogout}
@@ -257,6 +290,8 @@ export default function TripListScreen({ navigation }) {
                 />
                 <Text style={styles.settingButtonText}>Logout</Text>
               </TouchableOpacity>
+
+              {/* close button of the modal*/}
               <TouchableOpacity
                 style={styles.closeModalButton}
                 onPress={toggleSettingsModal}

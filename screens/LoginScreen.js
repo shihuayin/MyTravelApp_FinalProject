@@ -30,7 +30,8 @@ export default function LoginScreen({ navigation }) {
       Alert.alert("Input Error", "Please enter both email and password.");
       return;
     }
-    // sign in with Firebase Auth
+    // call the Firebase Auth sign-in API
+    //signInWithEmailAndPassword comes from firebase/auth
     signInWithEmailAndPassword(auth, email.trim(), password)
       .then(() => {})
       //error handle
@@ -49,8 +50,10 @@ export default function LoginScreen({ navigation }) {
       >
         <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
           <View style={styles.innerContainer}>
+            {/* title */}
             <Text style={styles.title}>Login</Text>
             <View style={styles.card}>
+              {/* input email */}
               <TextInput
                 style={styles.input}
                 placeholder="Email"
@@ -61,6 +64,7 @@ export default function LoginScreen({ navigation }) {
                 autoCapitalize="none"
                 autoCorrect={false}
               />
+              {/* input password */}
               <TextInput
                 style={styles.input}
                 placeholder="Password"
@@ -69,6 +73,7 @@ export default function LoginScreen({ navigation }) {
                 value={password}
                 onChangeText={setPassword}
               />
+              {/* login button */}
               <TouchableOpacity style={styles.button} onPress={handleLogin}>
                 <MaterialIcons
                   name="login"
@@ -77,6 +82,8 @@ export default function LoginScreen({ navigation }) {
                 />
                 <Text style={styles.buttonText}>Login</Text>
               </TouchableOpacity>
+
+              {/* register button */}
               <TouchableOpacity
                 style={[styles.button, styles.secondaryButton]}
                 onPress={() => navigation.navigate("Register")}

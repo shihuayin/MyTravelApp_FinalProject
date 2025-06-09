@@ -1,4 +1,4 @@
-// screens/CreateTripScreen.js
+// create new trip
 
 import { useState, useContext } from "react";
 import {
@@ -26,12 +26,16 @@ export default function CreateTripScreen({ navigation }) {
 
   // store to Firestore
   const handleCreate = async () => {
+    //input validation
+    //if any input field(destination / budget) is empty, call Alert.alert
     if (!destination.trim() || !budget.trim()) {
       Alert.alert("Input Error", "Please fill in both destination and budget.");
       return;
     }
 
     // add trip to the Firestore "trips"
+    //from the top-level "users" collection, select the document for the current user
+    // and then navigate into its "trips" subcollection.
     await addDoc(collection(db, "users", auth.currentUser.uid, "trips"), {
       destination: destination.trim(),
       budget: parseFloat(budget),
@@ -52,9 +56,10 @@ export default function CreateTripScreen({ navigation }) {
       >
         <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
           <View style={styles.innerContainer}>
+            {/* title */}
             <Text style={styles.title}>Create New Trip</Text>
             <View style={styles.card}>
-              {/* input trip destination */}
+              {/* 1. input trip destination */}
               <TextInput
                 placeholder="Destination"
                 placeholderTextColor={theme.placeholder}
@@ -62,7 +67,8 @@ export default function CreateTripScreen({ navigation }) {
                 value={destination}
                 onChangeText={setDestination}
               />
-              {/* input trip budget */}
+
+              {/* 2. input trip budget */}
               <TextInput
                 placeholder="Budget"
                 placeholderTextColor={theme.placeholder}
@@ -71,8 +77,8 @@ export default function CreateTripScreen({ navigation }) {
                 onChangeText={setBudget}
                 keyboardType="numeric"
               />
-              {/* submit button */}
 
+              {/* submit button */}
               <TouchableOpacity style={styles.button} onPress={handleCreate}>
                 <Text style={styles.buttonText}>Create</Text>
               </TouchableOpacity>

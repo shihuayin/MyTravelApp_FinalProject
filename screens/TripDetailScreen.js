@@ -1,5 +1,5 @@
 // screens/TripDetailScreen.js
-import React, { useEffect, useState, useContext } from "react";
+import { useEffect, useState, useContext } from "react";
 import {
   SafeAreaView,
   View,
@@ -15,6 +15,7 @@ import { auth, db } from "../firebase";
 import { doc, getDoc, collection, onSnapshot } from "firebase/firestore";
 import { MaterialIcons } from "@expo/vector-icons";
 import { ThemeContext } from "../ThemeContext";
+import { query, orderBy } from "firebase/firestore";
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
 
@@ -30,6 +31,7 @@ export default function TripDetailScreen({ route, navigation }) {
   useEffect(() => {
     let unsubPack, unsubExp, unsubPhoto;
 
+    //get the document content of the current trip
     (async () => {
       try {
         const docRef = doc(db, "users", auth.currentUser.uid, "trips", tripId);
@@ -38,7 +40,7 @@ export default function TripDetailScreen({ route, navigation }) {
           const data = { id: docSnap.id, ...docSnap.data() };
           setTrip(data);
 
-          // 订阅 PackingList
+          // real-time listen to the Packing List state.
           const packingCol = collection(
             db,
             "users",
@@ -65,6 +67,7 @@ export default function TripDetailScreen({ route, navigation }) {
             console.log
           );
 
+          //real-time listen to the expenses data
           const expCol = collection(
             db,
             "users",
@@ -76,6 +79,7 @@ export default function TripDetailScreen({ route, navigation }) {
           unsubExp = onSnapshot(
             expCol,
             (snapshot) => {
+              //calculate total expense
               let total = 0;
               snapshot.forEach((d) => {
                 const n = Number(d.data().amount);
@@ -84,6 +88,7 @@ export default function TripDetailScreen({ route, navigation }) {
               const budget = data.budget || 0;
               let summary;
               let pct = 0;
+              //calculate %
               if (budget > 0) {
                 pct = Math.round((total / budget) * 100);
                 summary = `${pct}% of budget`;
@@ -96,6 +101,7 @@ export default function TripDetailScreen({ route, navigation }) {
             console.log
           );
 
+          //real-time listen to the photo list
           const photoCol = collection(
             db,
             "users",
@@ -104,11 +110,16 @@ export default function TripDetailScreen({ route, navigation }) {
             tripId,
             "photos"
           );
+
+          // order by time in descending order (newest first)
+          const photoQuery = query(photoCol, orderBy("timestamp", "desc"));
+
           unsubPhoto = onSnapshot(
-            photoCol,
+            photoQuery,
             (snapshot) => {
               const urls = snapshot.docs.map((d) => d.data().imageUrl);
-              setPhotos(urls.slice(-4));
+              //take the 4 most recent photos
+              setPhotos(urls.slice(0, 4));
             },
             console.log
           );
@@ -142,6 +153,7 @@ export default function TripDetailScreen({ route, navigation }) {
     <SafeAreaView style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.container}>
         {/* destination title */}
+
         <Text style={styles.title}>{trip.destination}</Text>
 
         <View style={styles.infoRow}>

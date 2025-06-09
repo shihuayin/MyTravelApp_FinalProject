@@ -26,7 +26,7 @@ import {
 import { MaterialIcons } from "@expo/vector-icons";
 import { ThemeContext } from "../ThemeContext";
 
-// expense categories
+// define 6 expense categories
 const categories = [
   { name: "food", icon: "restaurant" },
   { name: "ticket", icon: "confirmation-number" },
@@ -38,7 +38,7 @@ const categories = [
 
 export default function ExpenseTrackerScreen({ route }) {
   const { theme } = useContext(ThemeContext);
-  const { tripId, budget } = route.params; // get trip ID
+  const { tripId, budget } = route.params;
   const numericBudget = Number(budget);
   const safeBudget =
     !isNaN(numericBudget) && numericBudget > 0 ? numericBudget : 1;
@@ -47,7 +47,9 @@ export default function ExpenseTrackerScreen({ route }) {
   const [amount, setAmount] = useState("");
   const [expenses, setExpenses] = useState({});
   const [totalExpense, setTotalExpense] = useState(0);
+
   // format currency
+  //use Intl.NumberFormat, convert number as dollar format without decimals
   const formatCurrency = (value) =>
     new Intl.NumberFormat("en-US", {
       style: "currency",
@@ -55,8 +57,10 @@ export default function ExpenseTrackerScreen({ route }) {
       maximumFractionDigits: 0,
     }).format(value);
 
-  // listener
+  // listen to expenses subcollection, asce order
+  //real-time read data from Firestore and update the state
   useEffect(() => {
+    //path
     const colRef = collection(
       db,
       "users",
@@ -65,16 +69,20 @@ export default function ExpenseTrackerScreen({ route }) {
       tripId,
       "expenses"
     );
+
+    //query
     const q = query(colRef, orderBy("timestamp", "asc"));
     const unsubscribe = onSnapshot(
       q,
       (snapshot) => {
         let expObj = {};
         let total = 0;
+        //iterate each expense document, extract amount field
         snapshot.forEach((d) => {
           const val = d.data().amount;
           const numericVal = Number(val);
           expObj[d.id] = isNaN(numericVal) ? 0 : numericVal;
+          //add the amout to total
           total += isNaN(numericVal) ? 0 : numericVal;
         });
         setExpenses(expObj);
@@ -87,19 +95,21 @@ export default function ExpenseTrackerScreen({ route }) {
     return () => unsubscribe();
   }, [tripId]);
 
-  // add  expense
+  // add  expense, write or update expense data to Firestore
   const handleAddExpense = async () => {
     if (!amount) {
       Alert.alert("Input Required", "Please enter an amount.");
       return;
     }
 
+    //input vaildation
     const inputVal = Math.round(Number(amount));
     if (isNaN(inputVal) || inputVal <= 0) {
       Alert.alert("Invalid Amount", "Please enter a valid positive number.");
       return;
     }
 
+    //path
     const docRef = doc(
       db,
       "users",
@@ -118,7 +128,7 @@ export default function ExpenseTrackerScreen({ route }) {
         const numericVal = Math.round(Number(dataVal));
         currentAmount = isNaN(numericVal) ? 0 : numericVal;
       }
-
+      //add
       const finalAmount = currentAmount + inputVal;
       await setDoc(docRef, { amount: finalAmount, timestamp: Date.now() });
       setAmount("");
@@ -128,7 +138,7 @@ export default function ExpenseTrackerScreen({ route }) {
     }
   };
 
-  // reset  expense to zero
+  //delete category, setDoc, reset  expense to zero
   const handleDeleteExpense = async (cat) => {
     Alert.alert(
       "Confirm Delete",
@@ -174,13 +184,16 @@ export default function ExpenseTrackerScreen({ route }) {
       >
         <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
           <ScrollView contentContainerStyle={styles(theme).scrollContainer}>
-            {/* titkle */}
+            {/* title */}
+
             <Text style={styles(theme).title}>Expense Tracker</Text>
 
-            {/* input section */}
+            {/* input card */}
             <View style={styles(theme).card}>
               {/* select category  */}
               <View style={styles(theme).categoryRow}>
+                {/* iterate category map */}
+                {/* icon+text */}
                 {categories.map((cat) => (
                   <TouchableOpacity
                     key={cat.name}
@@ -194,6 +207,7 @@ export default function ExpenseTrackerScreen({ route }) {
                     }
                     onPress={() => setCategory(cat.name)}
                   >
+                    {/* icon */}
                     <MaterialIcons
                       name={cat.icon}
                       size={24}
@@ -201,6 +215,7 @@ export default function ExpenseTrackerScreen({ route }) {
                         category === cat.name ? theme.buttonText : theme.text
                       }
                     />
+                    {/* text */}
                     <Text
                       style={
                         category === cat.name
@@ -215,9 +230,10 @@ export default function ExpenseTrackerScreen({ route }) {
                     </Text>
                   </TouchableOpacity>
                 ))}
+                {/* six category, map over */}
               </View>
 
-              {/* input amount */}
+              {/* input money amount */}
               <View style={styles(theme).inputContainer}>
                 <MaterialIcons
                   name="attach-money"
@@ -249,13 +265,18 @@ export default function ExpenseTrackerScreen({ route }) {
                 Expenses by Category:
               </Text>
               {Object.entries(expenses)
+                // only render items value > 0
+                // "Food: $200", if deleted, the row disappears
                 .filter(([_, amount]) => amount > 0)
+                //这里用了map
                 .map(([cat, amount]) => (
                   <View key={cat} style={styles(theme).expenseItem}>
+                    {/* text such as: food 700 */}
                     <Text style={styles(theme).expenseText}>
                       {cat.charAt(0).toUpperCase() + cat.slice(1)}:{" "}
                       {formatCurrency(amount)}
                     </Text>
+                    {/* delete icon, 🗑️ */}
                     <TouchableOpacity onPress={() => handleDeleteExpense(cat)}>
                       <MaterialIcons
                         name="delete"
@@ -267,12 +288,14 @@ export default function ExpenseTrackerScreen({ route }) {
                 ))}
             </View>
 
-            {/* process card */}
+            {/* expense process card */}
             <View style={styles(theme).card}>
+              {/* text, total expense, budget*/}
               <View style={styles(theme).budgetRow}>
                 <Text style={styles(theme).budgetText}>Total Spent:</Text>
                 <Text style={styles(theme).budgetText}>Budget:</Text>
               </View>
+              {/* money, total expense, budget */}
               <View style={styles(theme).budgetRow}>
                 <Text style={styles(theme).budgetValue}>
                   {formatCurrency(totalExpense)}
@@ -281,9 +304,11 @@ export default function ExpenseTrackerScreen({ route }) {
                   {formatCurrency(safeBudget)}
                 </Text>
               </View>
+              {/* expense percentage, % */}
               <Text style={styles(theme).budgetOverview}>
                 {`Expenses: ${percentage}% of Budget`}
               </Text>
+              {/* expense progress bar */}
               <View style={styles(theme).progressBarBackground}>
                 <View
                   style={[
